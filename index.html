@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SUT 재고와 가격</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>SUT 재고와 가격 <span>게이트 SUT/USDT · 폴리곤 온체인</span></h1>
+    <nav class="tabs"><a class="on" href="index.html">한눈에</a><a href="detail.html">오늘의 움직임과 이상 징후</a></nav>
+  </header>
+  <div class="status">
+    <span id="st-data"><i class="dot"></i>집계 데이터 불러오는 중</span>
+    <span id="st-live"><i class="dot"></i>실시간 잔고 대기</span>
+    <span id="st-price"><i class="dot"></i>실시간 가격 대기</span>
+  </div>
+
+  <section class="hero">
+    <div class="head">
+      <div><span class="price" id="px">—</span><small id="px-chg"></small></div>
+      <div class="legend">
+        <label><i style="background:var(--gate)"></i><input type="checkbox" data-k="gate" checked> 게이트 재고</label>
+        <label><i style="background:var(--pool)"></i><input type="checkbox" data-k="pool" checked> 유니스왑 풀 재고</label>
+        <label><i style="background:var(--sell)"></i><input type="checkbox" data-k="sell" checked> 회사 매도지갑 (수령분 200,001 대비)</label>
+        <label><i style="background:var(--mpc)"></i><input type="checkbox" data-k="mpc"> MPC 금고</label>
+      </div>
+    </div>
+    <div id="chart"></div>
+    <div class="foot">캔들은 게이트 일봉(하루 경계 KST 09:00 = UTC 00:00). 선은 게이트·풀 잔고를 기간 평균 대비 %로, 매도지갑은 9/5 수령분 200,001개 대비 %로 놓은 것이라 같은 축에서 읽힌다. 100% 점선이 평균(매도지갑은 수령 전량). 회사가 게이트로 물량을 보낸 날은 캔들 아래 붉은 표시.</div>
+  </section>
+
+  <div id="strip" class="strip">이상 징후 확인 중…</div>
+
+  <div class="gauges">
+    <div class="gauge gate"><h3>게이트 거래소 재고</h3><div class="n" id="g-gate">—</div><div class="bar"><b id="b-gate"></b><s></s></div><div class="sub"><span id="s-gate"></span><span>평균 = 눈금 중앙</span></div><div class="delta" id="d-gate"></div></div>
+    <div class="gauge pool"><h3>유니스왑 풀 재고 (주+보조)</h3><div class="n" id="g-pool">—</div><div class="bar"><b id="b-pool"></b><s></s></div><div class="sub"><span id="s-pool"></span><span>평균 = 눈금 중앙</span></div><div class="delta" id="d-pool"></div></div>
+    <div class="gauge sell"><h3>회사 매도지갑 잔고</h3><div class="n" id="g-sell">—</div><div class="bar"><b id="b-sell"></b></div><div class="sub"><span id="s-sell"></span><span>9/5 수령 200,001 = 눈금 끝</span></div><div class="delta" id="d-sell"></div></div>
+  </div>
+
+  <section class="panel">
+    <h2>이 화면이 말하는 것</h2>
+    <p class="note">재고 감소가 상승을 예고하지는 않는다(3~8월 검정에서 예측력 없음). 다만 풀 재고가 평균의 20% 아래로 마른 상태에서는 작은 매수도 큰 등락을 만든다(9월 2~5일 +89%). 방향이 일관된 신호는 회사 물량이 게이트에 도착하는 것뿐이며(9/7 25만 개 도착 → −3.4%, −4.1%), 그 전 단계인 환전지갑 유입이 1~4일 앞선다. 상세 탭에서 오늘의 지갑 움직임과 과거 이상 징후 날의 가격 반응을 볼 수 있다.</p>
+  </section>
+
+  <footer>데이터: 게이트 아카이브·API(가격), Etherscan V2(온체인 집계, 15분마다 갱신), 폴리곤 공개 RPC(잔고, 1분마다). 지갑 라벨은 슈퍼세이브 자료실 기준. 이 화면은 기록이지 예측이 아니다.</footer>
+</div>
+
+<script src="assets/data.js"></script>
+<script>
+(async function () {
+  const $ = id => document.getElementById(id);
+  const { fmt } = SUT;
+  const setDot = (id, cls, text) => { const el = $(id); el.innerHTML = `<i class="dot ${cls}"></i>${text}`; };
+
+  let data; try { data = await SUT.loadJSON('data/daily.json'); setDot('st-data', 'live', '집계 ' + data.meta.generated.replace('T', ' ').slice(0, 16) + ' UTC'); }
+  catch (e) { setDot('st-data', 'err', '집계 데이터 없음: data/daily.json 을 확인하세요'); return; }
+  const days = data.days, meta = data.meta;
+  const SELL_REF = 200001; // 9/5 매도지갑 수령분 — 매도지갑은 평균이 아니라 이 수령분 대비 남은 비율로 본다
+  const avg = { gate: meta.avg.gate, pool: meta.avg.pool, sell: SELL_REF, mpc: meta.avg.mpc_vault };
+
+  /* ---- chart ---- */
+  const chart = LightweightCharts.createChart($('chart'), {
+    layout: { background: { color: '#ffffff' }, textColor: '#5b6674', fontFamily: 'IBM Plex Sans KR, sans-serif', fontSize: 12 },
+    grid: { vertLines: { color: '#f0f2f5' }, horzLines: { color: '#f0f2f5' } },
+    rightPriceScale: { borderColor: '#d7dde3', scaleMargins: { top: 0.08, bottom: 0.2 } },
+    leftPriceScale: { visible: true, borderColor: '#d7dde3', scaleMargins: { top: 0.08, bottom: 0.2 } },
+    timeScale: { borderColor: '#d7dde3', timeVisible: false },
+    crosshair: { mode: 0 },
+  });
+  const candles = chart.addCandlestickSeries({ upColor: '#1f8b5a', downColor: '#b8321f', borderVisible: false, wickUpColor: '#1f8b5a', wickDownColor: '#b8321f', priceScaleId: 'right', priceFormat: { type: 'price', precision: 4, minMove: 0.0001 } });
+  candles.setData(days.filter(d => d.o != null).map(d => ({ time: d.d, open: d.o, high: d.h, low: d.l, close: d.c })));
+  const vol = chart.addHistogramSeries({ priceScaleId: 'vol', color: '#d7dde3', priceFormat: { type: 'volume' } });
+  vol.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+  vol.setData(days.filter(d => d.v != null).map(d => ({ time: d.d, value: d.v })));
+  const colors = { gate: '#1f6f8b', pool: '#b7791f', sell: '#b8321f', mpc: '#6b5b95' };
+  const lines = {};
+  for (const k of ['gate', 'pool', 'sell', 'mpc']) {
+    lines[k] = chart.addLineSeries({ priceScaleId: 'left', color: colors[k], lineWidth: k === 'mpc' ? 1 : 2, priceFormat: { type: 'custom', formatter: v => v.toFixed(0) + '%' }, lastValueVisible: false, priceLineVisible: false });
+    lines[k].setData(days.map(d => ({ time: d.d, value: (d[k] / avg[k]) * 100 })));
+  }
+  lines.mpc.applyOptions({ visible: false });
+  lines.gate.createPriceLine({ price: 100, color: '#98a2ad', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '평균' });
+  candles.setMarkers(days.filter(d => d.f && d.f.company_to_gate > 0).map(d => ({ time: d.d, position: 'belowBar', color: '#b8321f', shape: 'arrowUp', text: '회사→게이트 ' + fmt.k(d.f.company_to_gate) })));
+  document.querySelectorAll('.legend input').forEach(cb => cb.addEventListener('change', () => lines[cb.dataset.k].applyOptions({ visible: cb.checked })));
+  chart.timeScale().fitContent();
+  new ResizeObserver(() => chart.applyOptions({ width: $('chart').clientWidth })).observe($('chart'));
+
+  /* ---- gauges + strip ---- */
+  const last = days[days.length - 1], prev = days[days.length - 2];
+  function gauge(k, val, ref, refLabel) {
+    $('g-' + k).innerHTML = fmt.n(val) + '<small>SUT</small>';
+    const ratio = val / avg[k];
+    $('b-' + k).style.width = Math.min(100, ratio * 50) + '%';
+    $('b-' + k).style.background = ratio < 0.25 ? 'var(--sell)' : ratio < 0.6 ? 'var(--pool)' : 'var(--ink-3)';
+    $('s-' + k).textContent = (k === 'sell' ? '수령분 대비 남은 ' : '평균 대비 ') + (ratio * 100).toFixed(0) + '%';
+    if (k === 'sell') { $('b-' + k).style.width = Math.min(100, ratio * 100) + '%'; $('b-' + k).style.background = 'var(--sell)'; }
+    if (ref != null) { const dlt = val - ref; const el = $('d-' + k); el.textContent = (dlt >= 0 ? '+' : '') + fmt.n(dlt) + ' ' + refLabel; el.className = 'delta ' + (dlt > 0 ? 'up' : dlt < 0 ? 'down' : ''); }
+  }
+  function render(live) {
+    for (const k of ['gate', 'pool', 'sell']) {
+      const v = live && live[k] != null ? live[k] : last[k];
+      gauge(k, v, live && live[k] != null ? last[k] : prev[k], live && live[k] != null ? '마지막 집계 대비' : '전일 대비');
+    }
+    const flags = SUT.flagsForDay(days, days.length - 1, live);
+    const strip = $('strip');
+    if (!flags.length) { strip.className = 'strip'; strip.innerHTML = `<b>${last.d}</b> 회사 지갑 이동 없음, 거래소·풀 이동 평소 수준.`; }
+    else { strip.className = 'strip ' + (flags.some(f => f.lvl === 'alert') ? 'alert' : ''); strip.innerHTML = `<b>${last.d} 기준</b><ul>` + flags.map(f => `<li>${f.text}</li>`).join('') + '</ul>'; }
+  }
+  render(null);
+  if (last.c != null) { $('px').textContent = fmt.px(last.c); const chg = prev && prev.c ? last.c / prev.c - 1 : null; $('px-chg').textContent = chg == null ? '' : fmt.sp(chg) + ' (집계 종가)'; $('px-chg').style.color = chg >= 0 ? 'var(--up)' : 'var(--down)'; }
+
+  /* ---- live polling every 60 s ---- */
+  async function tick() {
+    try {
+      const live = await SUT.liveBalances(meta.wallets);
+      if (live.gate != null) { setDot('st-live', 'live', '실시간 잔고 ' + fmt.t(new Date())); render(live); }
+      else setDot('st-live', 'stale', '실시간 잔고 실패(RPC) — 집계값 표시');
+    } catch (e) { setDot('st-live', 'stale', '실시간 잔고 실패 — 집계값 표시'); }
+    try {
+      const p = await SUT.livePrice();
+      $('px').textContent = fmt.px(p.last); $('px-chg').textContent = fmt.sp(p.change24h) + ' (24h)'; $('px-chg').style.color = p.change24h >= 0 ? 'var(--up)' : 'var(--down)';
+      setDot('st-price', 'live', '실시간 가격 ' + fmt.t(new Date()));
+      try { const c = await SUT.todayCandle(); const t = c[c.length - 1]; const dd = new Date(t.t * 1000).toISOString().slice(0, 10); candles.update({ time: dd, open: t.o, high: t.h, low: t.l, close: t.c }); } catch (e) {}
+    } catch (e) { setDot('st-price', 'stale', '실시간 가격 실패(브라우저 CORS 제한일 수 있음) — 집계 종가 표시'); }
+  }
+  tick(); setInterval(tick, 60000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SUT 오늘의 움직임과 이상 징후</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>오늘의 움직임과 이상 징후 <span>SUT · 폴리곤 온체인</span></h1>
+    <nav class="tabs"><a href="index.html">한눈에</a><a class="on" href="detail.html">오늘의 움직임과 이상 징후</a></nav>
+  </header>
+  <div class="status">
+    <span id="st-data"><i class="dot"></i>집계 데이터 불러오는 중</span>
+    <span id="st-live"><i class="dot"></i>실시간 잔고 대기</span>
+  </div>
+
+  <div id="strip" class="strip">확인 중…</div>
+
+  <section class="panel">
+    <h2 id="today-h">오늘의 지갑 움직임</h2>
+    <p class="note">집계는 15분마다, 잔고는 1분마다 갱신된다. 게이트 입금은 매일 UTC 05시(KST 14시) 배치로만 찍히므로 그 시각 전에는 오늘치 입금이 0으로 보이는 것이 정상이다.</p>
+    <div class="kv" id="kv"></div>
+    <ul class="tl" id="tl" style="margin-top:12px"></ul>
+  </section>
+
+  <section class="panel">
+    <h2>지금 켜져 있는 규칙</h2>
+    <div class="rules"><dl>
+      <dt>회사 매도 사슬</dt><dd>MPC 금고 → 매도지갑·환전지갑 이관, 환전지갑 유입, 회사→게이트 도착, 매도지갑 유출. 9월에 네 단계가 순서대로 관측됐고 도착일부터 가격이 꺾였다. 이 규칙만 방향이 일관된다.</dd>
+      <dt>재고 바닥</dt><dd>풀 재고가 기간 평균의 25% 아래. 예측 신호가 아니라 변동성 경고 — 9월 2~5일 풀이 평균의 8~21%일 때 +89%.</dd>
+      <dt>이동량 급증</dt><dd>지갑별 30일 중앙값의 10배 또는 로버스트 z 5 이상. 6월 게이트 사례는 거래소 내부 정리라 가격과 무관했다. 참고용.</dd>
+      <dt>쓰지 않는 것</dt><dd>게이트 재고 감소 → 반등, 개인 출금 급증 → 상승. 3~8월 검정에서 반대로 나왔다.</dd>
+    </dl></div>
+  </section>
+
+  <section class="panel">
+    <h2>과거 이상 징후 날과 그 뒤 가격</h2>
+    <p class="note">붉은 배경은 회사 지갑 사건. '평균 대비'는 그날 잔고가 기간 평균의 몇 퍼센트인지. 당일은 그날 시가→종가가 아니라 전일 종가→당일 종가.</p>
+    <div class="tw"><table class="t" id="hist"><thead><tr>
+      <th class="l">날짜</th><th class="l">지갑 / 사건</th><th>이동량 SUT</th><th>순변화</th><th>평소 대비</th><th>당일 잔고</th><th>평균 대비</th><th>당일</th><th>다음날</th><th>+3일</th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="panel">
+    <h2>회사 매도 사슬, 9월 실측</h2>
+    <ul class="tl">
+      <li class="company"><span class="t">09/03 04:00</span><span>MPC 금고 → 환전지갑 50,000</span><span class="amt">이관</span></li>
+      <li class="company"><span class="t">09/04 05:00</span><span>환전지갑 → 게이트 50,000 (05시 배치)</span><span class="amt">도착 · 그날 +12.7%</span></li>
+      <li class="company"><span class="t">09/05 07:00</span><span>MPC 금고 → 매도지갑 200,001</span><span class="amt">이관</span></li>
+      <li class="company"><span class="t">09/05~07</span><span>환전지갑 유입 50k · 50k · 50k · 100k</span><span class="amt">대기 물량 250,000</span></li>
+      <li class="company"><span class="t">09/06 21:00</span><span>매도지갑 → 10,000 유출</span><span class="amt">첫 매도</span></li>
+      <li class="company"><span class="t">09/07 05:00</span><span>환전지갑 → 게이트 250,000 (05시 배치)</span><span class="amt">도착 · 그날 −3.4%, 다음날 −4.1%</span></li>
+      <li class="company"><span class="t">09/07~08</span><span>매도지갑 → 2,000 · 2,000 유출, 잔여 186,001</span><span class="amt">감소 속도 감시</span></li>
+    </ul>
+  </section>
+
+  <footer>데이터: Etherscan V2(온체인 집계), 폴리곤 공개 RPC(실시간 잔고), 게이트(가격). 하루 경계 KST 09:00. 이 화면은 기록이지 예측이 아니다.</footer>
+</div>
+
+<script src="assets/data.js"></script>
+<script>
+(async function () {
+  const $ = id => document.getElementById(id); const { fmt } = SUT;
+  const setDot = (id, cls, text) => { $(id).innerHTML = `<i class="dot ${cls}"></i>${text}`; };
+  let data, anomalies;
+  try { data = await SUT.loadJSON('data/daily.json'); anomalies = await SUT.loadJSON('data/anomalies.json'); setDot('st-data', 'live', '집계 ' + data.meta.generated.replace('T', ' ').slice(0, 16) + ' UTC'); }
+  catch (e) { setDot('st-data', 'err', '집계 데이터 없음'); return; }
+  const days = data.days, meta = data.meta, avg = meta.avg;
+  const last = days[days.length - 1], prev = days[days.length - 2];
+  $('today-h').textContent = last.d + ' 지갑 움직임 (KST 09시 기준일)';
+
+  function renderToday(live) {
+    const f = last.f;
+    const g = (live && live.gate != null) ? live.gate : last.gate, p = (live && live.pool != null) ? live.pool : last.pool, s = (live && live.sell != null) ? live.sell : last.sell;
+    $('kv').innerHTML = [
+      ['게이트 재고', fmt.n(g), '평균 대비 ' + (g / avg.gate * 100).toFixed(0) + '% · 전일 ' + (g - prev.gate >= 0 ? '+' : '') + fmt.n(g - prev.gate)],
+      ['풀 재고', fmt.n(p), '평균 대비 ' + (p / avg.pool * 100).toFixed(0) + '% · 전일 ' + (p - prev.pool >= 0 ? '+' : '') + fmt.n(p - prev.pool)],
+      ['매도지갑 잔고', fmt.n(s), '9/5 수령 200,001 중 ' + fmt.n(Math.max(0, 200001 - s)) + ' 매도, 남은 ' + (s / 200001 * 100).toFixed(0) + '%'],
+      ['종가 / 수익률', fmt.px(last.c), prev.c ? '전일 대비 ' + fmt.sp(last.c / prev.c - 1) : ''],
+    ].map(([a, b, c]) => `<div><b>${b}</b>${a}<br><span>${c}</span></div>`).join('');
+    const items = [];
+    const push = (cls, label, amt, note) => items.push(`<li class="${cls}"><span class="t">${label}</span><span>${note}</span><span class="amt">${amt}</span></li>`);
+    if (f.vault_to_sellers) push('company', '금고→매도경로', fmt.n(f.vault_to_sellers), 'MPC 금고에서 매도지갑·환전지갑으로 이관');
+    if (f.fx_in) push('company', '환전지갑 유입', fmt.n(f.fx_in), '거래소 이동 대기 물량');
+    if (f.company_to_gate) push('company', '게이트 도착', fmt.n(f.company_to_gate), '회사 물량이 거래소에 도착 (05시 배치)');
+    if (f.sell_out) push('company', '매도지갑 유출', fmt.n(f.sell_out), '시장 매도');
+    if (f.mpc_vault_out && !f.vault_to_sellers) push('', 'MPC 금고 유출', fmt.n(f.mpc_vault_out), '매도경로가 아닌 곳으로 (회원 보충일 가능성)');
+    push('', '게이트 입금', fmt.n(f.gate_in), '개인 ' + fmt.n(f.public_to_gate) + ' + 회사 ' + fmt.n(f.company_to_gate));
+    push('', '게이트 출금', fmt.n(f.gate_out), '개인 출금 ' + fmt.n(f.gate_to_public));
+    push('', '풀 매수 / 매도', fmt.n(f.public_buy_from_pool) + ' / ' + fmt.n(f.public_sell_to_pool), '순매수 ' + (f.public_buy_from_pool - f.public_sell_to_pool >= 0 ? '+' : '') + fmt.n(f.public_buy_from_pool - f.public_sell_to_pool));
+    $('tl').innerHTML = items.join('') || '<li class="empty">기록된 이동 없음</li>';
+    const flags = SUT.flagsForDay(days, days.length - 1, live); const strip = $('strip');
+    if (!flags.length) { strip.className = 'strip'; strip.innerHTML = `<b>${last.d}</b> 회사 지갑 이동 없음, 거래소·풀 이동 평소 수준.`; }
+    else { strip.className = 'strip ' + (flags.some(x => x.lvl === 'alert') ? 'alert' : ''); strip.innerHTML = `<b>${last.d} 기준</b><ul>` + flags.map(x => `<li>${x.text}</li>`).join('') + '</ul>'; }
+  }
+  renderToday(null);
+
+  /* history table */
+  const cls = v => v == null ? 'muted' : v > 0 ? 'up' : v < 0 ? 'down' : '';
+  const tb = $('hist').querySelector('tbody');
+  tb.innerHTML = anomalies.slice().reverse().map(r => `<tr class="${r.kind}">
+    <td class="l">${r.d}</td><td class="l">${r.name}</td><td>${fmt.n(r.total)}</td><td>${r.net == null ? '—' : (r.net >= 0 ? '+' : '') + fmt.n(r.net)}</td>
+    <td>${r.ratio == null ? '—' : r.ratio.toFixed(1) + '배'}</td><td>${fmt.n(r.bal)}</td><td>${r.bal_vs_avg == null ? '—' : (r.bal_vs_avg * 100).toFixed(0) + '%'}</td>
+    <td class="${cls(r.ret)}">${fmt.sp(r.ret)}</td><td class="${cls(r.n1)}">${fmt.sp(r.n1)}</td><td class="${cls(r.n3)}">${fmt.sp(r.n3)}</td></tr>`).join('');
+
+  async function tick() {
+    try { const live = await SUT.liveBalances(meta.wallets); if (live.gate != null) { setDot('st-live', 'live', '실시간 잔고 ' + fmt.t(new Date())); renderToday(live); } else setDot('st-live', 'stale', '실시간 잔고 실패 — 집계값'); }
+    catch (e) { setDot('st-live', 'stale', '실시간 잔고 실패 — 집계값'); }
+  }
+  tick(); setInterval(tick, 60000);
+})();
+</script>
+</body>
+</html>
